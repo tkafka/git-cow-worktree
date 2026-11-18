@@ -821,6 +821,33 @@ func TestE2E_PostCheckoutHookArgs(t *testing.T) {
 	}
 }
 
+func TestE2E_PostCheckoutFailureRunsHookOnce(t *testing.T) {
+	gitCowWorktree := buildGitCowWorktree(t)
+	r := newRepo(t, "main")
+	r.commit("nested/a.txt", "alpha")
+	hookLog := filepath.Join(r.parent, "hook.log")
+	hookPath := filepath.Join(r.dir, ".git", "hooks", "post-checkout")
+	hook := "#!/bin/sh\necho called >> " + shellQuote(hookLog) + "\nexit 23\n"
+	if err := os.WriteFile(hookPath, []byte(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(r.parent, "out")
+	cmd := exec.Command(gitCowWorktree, "add", "--detach", out, "HEAD")
+	cmd.Dir = filepath.Join(r.dir, "nested")
+	got, err := cmd.CombinedOutput()
+	if cmd.ProcessState.ExitCode() != 23 {
+		t.Fatalf("git-cow-worktree add: %v\n%s", err, got)
+	}
+	log, err := os.ReadFile(hookLog)
+	if err != nil || string(log) != "called\n" {
+		t.Fatalf("hook log = %q, error = %v", log, err)
+	}
+	if got := gitOutput(t, out, "status", "--porcelain"); got != "" {
+		t.Fatalf("new worktree has changes: %s", got)
+	}
+}
+
 func TestE2E_PostCheckoutHookArgsSHA256(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
@@ -906,6 +933,11 @@ func TestParseArgsCompatibility(t *testing.T) {
 	}
 	if opts.NoCheckout || len(opts.Forward) != 0 {
 		t.Fatalf("--checkout should be normalized out of optimized path: %+v", opts)
+	}
+
+	opts, err = parseArgs([]string{"out", "-"})
+	if err != nil || opts.TargetPath != "out" || opts.CommitIsh != "-" {
+		t.Fatalf("previous branch shorthand: %+v, %v", opts, err)
 	}
 
 	opts, err = parseArgs([]string{"--", "-dash", "target"})

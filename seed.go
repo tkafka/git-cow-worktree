@@ -5,23 +5,21 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"strings"
 )
 
 // finalizeCheckout brings the new worktree's working tree in line with its
-// index, then runs post-checkout with the same arguments `git worktree add`
-// uses for a newly-created worktree. We force checkout.workers=0 so git
+// index. We force checkout.workers=0 so git
 // parallelises file writes / stat-cache hashing across all CPUs.
 //
 // Files we cloned and vouched for in the index are skipped here, so this
 // writes only what's left; if seeding didn't happen, or the index we wrote
 // was rejected, this degrades to an ordinary full checkout.
-func finalizeCheckout(repoDir, targetSHA string) error {
-	cmd := exec.Command("git",
+func finalizeCheckout(repoDir string) error {
+	cmd := gitCommand(
 		"-c", "checkout.workers=0",
 		"-c", "core.hooksPath=/dev/null",
-		"checkout", "-f", "HEAD")
+		"checkout", "-q", "-f", "HEAD")
 	cmd.Dir = repoDir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -29,14 +27,11 @@ func finalizeCheckout(repoDir, targetSHA string) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git checkout: %w", err)
 	}
-	if err := runPostCheckoutHook(repoDir, targetSHA); err != nil {
-		return err
-	}
 	return nil
 }
 
 func runPostCheckoutHook(repoDir, targetSHA string) error {
-	cmd := exec.Command("git", "hook", "run", "--ignore-missing", "post-checkout", "--", zeroObjectIDFor(targetSHA), targetSHA, "1")
+	cmd := gitCommand("hook", "run", "--ignore-missing", "post-checkout", "--", zeroObjectIDFor(targetSHA), targetSHA, "1")
 	cmd.Dir = repoDir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -53,7 +48,7 @@ func zeroObjectIDFor(oid string) string {
 
 // resolveRev resolves a commit-ish to its full SHA within repoDir.
 func resolveRev(repoDir, rev string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--verify", rev+"^{commit}")
+	cmd := gitCommand("rev-parse", "--verify", "--end-of-options", rev+"^{commit}")
 	cmd.Dir = repoDir
 	out, err := cmd.Output()
 	if err != nil {

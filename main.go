@@ -43,11 +43,18 @@ func main() {
 	}
 	if err := run(os.Args[2:]); err != nil {
 		fmt.Fprintln(os.Stderr, commandName+":", err)
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() > 0 {
+			os.Exit(exitErr.ExitCode())
+		}
 		os.Exit(1)
 	}
 }
 
 func run(args []string) error {
+	if len(args) == 0 || (len(args) == 1 && args[0] == "-h") {
+		return execGitWorktreeAdd(args)
+	}
 	opts, err := parseArgs(args)
 	if err != nil {
 		return err
@@ -65,6 +72,11 @@ func run(args []string) error {
 	repoDir, err := os.Getwd()
 	if err != nil {
 		return err
+	}
+
+	// Git can implicitly create an orphan worktree from an unborn HEAD.
+	if _, err := resolveRev(repoDir, "HEAD"); err != nil && !opts.FromSpecified {
+		return execGitWorktreeAdd(opts.GitArgs)
 	}
 
 	var explicitSource *Worktree
@@ -155,7 +167,7 @@ func run(args []string) error {
 
 	// Step 6: finalize.
 	t = time.Now()
-	if err := finalizeCheckout(targetAbs, targetSHA); err != nil {
+	if err := finalizeCheckout(targetAbs); err != nil {
 		if seededIndex == "" {
 			return err
 		}
@@ -170,9 +182,12 @@ func run(args []string) error {
 				return err
 			}
 		}
-		if err := finalizeCheckout(targetAbs, targetSHA); err != nil {
+		if err := finalizeCheckout(targetAbs); err != nil {
 			return err
 		}
+	}
+	if err := runPostCheckoutHook(targetAbs, targetSHA); err != nil {
+		return err
 	}
 	phase("checkout", t)
 
@@ -422,7 +437,7 @@ func parseArgs(args []string) (Options, error) {
 		case a == "--no-orphan":
 			o.Orphan = false
 			o.GitArgs = append(o.GitArgs, a)
-		case strings.HasPrefix(a, "-"):
+		case a != "-" && strings.HasPrefix(a, "-"):
 			arity := gitWorktreeAddFlagArity(a)
 			if arity == 1 {
 				if i+1 >= len(args) {
@@ -461,7 +476,7 @@ func gitWorktreeAddFlagArity(arg string) int {
 }
 
 func execGitWorktreeAdd(args []string) error {
-	cmd := exec.Command("git", append([]string{"worktree", "add"}, args...)...)
+	cmd := gitCommand(append([]string{"worktree", "add"}, args...)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -469,10 +484,15 @@ func execGitWorktreeAdd(args []string) error {
 }
 
 func runGitStreaming(dir string, args ...string) error {
-	cmd := exec.Command("git", args...)
+	cmd := gitCommand(args...)
 	cmd.Dir = dir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// gitCommand allows a PATH wrapper to select the backend without recursion.
+func gitCommand(args ...string) *exec.Cmd {
+	return exec.Command(cmp.Or(os.Getenv("GIT_COW_WORKTREE_GIT"), "git"), args...)
 }

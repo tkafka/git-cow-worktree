@@ -36,7 +36,7 @@ type treeIndex struct {
 
 // lsTree lists ref's tree in repoDir. Uses -z for safety with weird filenames.
 func lsTree(repoDir, ref string) (*treeIndex, error) {
-	cmd := exec.Command("git", "ls-tree", "-r", "-t", "-z", ref)
+	cmd := gitCommand("ls-tree", "--full-tree", "-r", "-t", "-z", ref)
 	cmd.Dir = repoDir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -96,7 +96,7 @@ func filterSparseCheckout(repoDir string, tree *treeIndex) (*treeIndex, error) {
 		input.WriteByte(0)
 	}
 
-	cmd := exec.Command("git", "sparse-checkout", "check-rules", "-z")
+	cmd := gitCommand("sparse-checkout", "check-rules", "-z")
 	cmd.Dir = repoDir
 	cmd.Stdin = &input
 	var stderr bytes.Buffer
@@ -124,7 +124,7 @@ func filterSparseCheckout(repoDir string, tree *treeIndex) (*treeIndex, error) {
 }
 
 func sparseCheckoutEnabled(repoDir string) (bool, error) {
-	cmd := exec.Command("git", "config", "--bool", "core.sparseCheckout")
+	cmd := gitCommand("config", "--bool", "core.sparseCheckout")
 	cmd.Dir = repoDir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -154,7 +154,7 @@ func sparseCheckoutEnabled(repoDir string) (bool, error) {
 func sourceExclusions(worktree, ref string) (excluded map[string]bool, dirty int, err error) {
 	excluded = make(map[string]bool)
 	collect := func(args ...string) (int, error) {
-		cmd := exec.Command("git", args...)
+		cmd := gitCommand(args...)
 		cmd.Dir = worktree
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
@@ -182,7 +182,7 @@ func sourceExclusions(worktree, ref string) (excluded map[string]bool, dirty int
 	// Untracked paths. Without --exclude-standard this covers ignored
 	// files too, which is what we want: build output belongs to the
 	// worktree that produced it.
-	if _, err := collect("ls-files", "-z", "--others", "--directory", "--no-empty-directory"); err != nil {
+	if _, err := collect("ls-files", "-z", "--others", "--directory"); err != nil {
 		return nil, 0, err
 	}
 	return excluded, dirty, nil

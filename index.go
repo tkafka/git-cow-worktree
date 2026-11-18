@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -116,7 +115,7 @@ func writeIndex(path string, entries []indexEntry) error {
 
 // indexPath returns the path of worktree's index file.
 func indexPath(worktree string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--absolute-git-dir")
+	cmd := gitCommand("rev-parse", "--absolute-git-dir")
 	cmd.Dir = worktree
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

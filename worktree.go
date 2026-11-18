@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -25,7 +24,7 @@ type Worktree struct {
 
 // listWorktrees parses `git worktree list --porcelain` from inside repoDir.
 func listWorktrees(repoDir string) ([]Worktree, error) {
-	cmd := exec.Command("git", "worktree", "list", "--porcelain", "-z")
+	cmd := gitCommand("worktree", "list", "--porcelain", "-z")
 	cmd.Dir = repoDir
 	out, err := cmd.Output()
 	if err != nil {
@@ -190,7 +189,7 @@ func rankSources(repoDir string, candidates []Worktree, targetSHA string) []scor
 
 // commitDistance returns commits-ahead + commits-behind between a and b.
 func commitDistance(repoDir, a, b string) (int, error) {
-	cmd := exec.Command("git", "rev-list", "--left-right", "--count", a+"..."+b)
+	cmd := gitCommand("rev-list", "--left-right", "--count", a+"..."+b)
 	cmd.Dir = repoDir
 	out, err := cmd.Output()
 	if err != nil {
